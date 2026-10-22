@@ -9,29 +9,40 @@ use think\Request;
 use think\Response;
 
 /**
- * 后台登录校验。挂到需要登录的路由上，登录接口本身不要挂。
+ * 后台登录校验。挂到需要登录的路由上，登录、验证码接口不要挂。
+ * 写法参考 newwx AuthMiddleware：先拆 Authorization，再验 token，最后把用户信息写入中间件。
  */
 class Auth
 {
     public function handle(Request $request, Closure $next): Response
     {
-        // 请求头格式：Authorization: Bearer <JWT>
-        $header = (string) $request->header('authorization', '');
-        $token = '';
-        // Bearer 后面那一段才是令牌，括号里的内容进 $match[1]
-        if (preg_match('/Bearer\s+(\S+)/i', $header, $match)) {
-            $token = $match[1];
-        }
-
-        // 验签失败、过期，或缓存里的令牌已被退出删掉，都视为未登录
-        $payload = $token !== '' ? JwtToken::parse($token) : null;
-        if (!$payload) {
+        $authHeader = $request->header('Authorization');
+        if (!$authHeader) {
             return json(['code' => 401, 'msg' => '请先登录', 'data' => null], 401);
         }
 
-        // 交给后面的控制器。退出接口用 userId 删除缓存里的令牌
-        $request->userId = $payload['uid'];
-        $request->jti = $payload['jti'];
+        // 请求头必须是 Authorization: Bearer <JWT>
+        if (strpos($authHeader, 'Bearer ') !== 0) {
+            return json(['code' => 401, 'msg' => '无效的验证头格式', 'data' => null], 401);
+        }
+
+        // 去掉前面的 "Bearer "（7 个字符），剩下才是令牌
+        $token = substr($authHeader, 7);
+        if ($token === '') {
+            return json(['code' => 401, 'msg' => 'Token 不能为空', 'data' => null], 401);
+        }
+
+        // 验签、过期、以及缓存里 admin_user_{id}_token 是否还是这一整段，都在 parse 里做
+        $payload = JwtToken::parse($token);
+        if (!$payload) {
+            return json(['code' => 401, 'msg' => '无效的Token', 'data' => null], 401);
+        }
+
+        // 显式写入中间件数据，后面用 $request->middleware('userId') 取（退出接口就是这样取的）
+        $request->withMiddleware([
+            'userId' => $payload['uid'],
+            'jti'    => $payload['jti'],
+        ]);
 
         return $next($request);
     }

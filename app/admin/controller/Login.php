@@ -39,10 +39,20 @@ class Login extends BaseController
         $username = (string) ($params['username'] ?? '');
         $password = (string) ($params['password'] ?? '');
 
-        $user = (new User())->findByUsername($username);
+        $userModel = new User();
+        $user      = $userModel->findByUsername($username);
         // password 字段存的是 password_hash 的结果，不能直接比对明文
         if (!$user || !password_verify($password, (string) $user->password)) {
             return $this->error('账号或密码错误');
+        }
+
+        // 禁用账号不能登录
+        if ((int) $user->status !== User::STATUS_NORMAL) {
+            return $this->error('账号已被禁用');
+        }
+        // 后台只允许管理员进入
+        if ((int) $user->is_admin !== User::IS_ADMIN_YES) {
+            return $this->error('无后台登录权限');
         }
 
         // 返回给前端的 token 是整段 JWT，之后放到 Authorization 请求头里
@@ -50,11 +60,18 @@ class Login extends BaseController
         // 按用户 id 保存这一整段令牌，有效期一天。后一次登录会覆盖上一次
         Cache::set('admin_user_' . $user->id . '_token', $token, 86400);
 
+        // 更新最后登录时间和 IP（写在模型里，控制器不直接改字段）
+        if (!$userModel->login($user, (string) $request->ip())) {
+            return $this->error('登录失败');
+        }
+
         return $this->success([
             'token' => $token,
             'user'  => [
                 'id'       => $user->id,
                 'username' => $user->username,
+                'nickname' => $user->nickname,
+                'avatar'   => $user->avatar,
             ],
         ], '登录成功');
     }
