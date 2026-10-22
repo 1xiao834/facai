@@ -32,7 +32,8 @@ class Login extends BaseController
                 ->scene('login')
                 ->check($params);
         } catch (ValidateException $e) {
-            return json(['code' => 1, 'msg' => $e->getError()]);
+            $message = $e->getError();
+            return $this->error(is_array($message) ? (string) reset($message) : (string) $message);
         }
 
         $username = (string) ($params['username'] ?? '');
@@ -41,7 +42,7 @@ class Login extends BaseController
         $user = (new User())->findByUsername($username);
         // password 字段存的是 password_hash 的结果，不能直接比对明文
         if (!$user || !password_verify($password, (string) $user->password)) {
-            return json(['code' => 1, 'msg' => '账号或密码错误']);
+            return $this->error('账号或密码错误');
         }
 
         // 返回给前端的 token 是整段 JWT，之后放到 Authorization 请求头里
@@ -49,17 +50,13 @@ class Login extends BaseController
         // 按用户 id 保存这一整段令牌，有效期一天。后一次登录会覆盖上一次
         Cache::set('admin_user_' . $user->id . '_token', $token, 86400);
 
-        return json([
-            'code' => 0,
-            'msg'  => '登录成功',
-            'data' => [
-                'token' => $token,
-                'user'  => [
-                    'id'       => $user->id,
-                    'username' => $user->username,
-                ],
+        return $this->success([
+            'token' => $token,
+            'user'  => [
+                'id'       => $user->id,
+                'username' => $user->username,
             ],
-        ]);
+        ], '登录成功');
     }
 
     /**
@@ -72,6 +69,6 @@ class Login extends BaseController
         // userId 由 Auth 中间件从令牌里取出，不从提交内容里取
         Cache::delete('admin_user_' . $user . '_token');
 
-        return json(['code' => 0, 'msg' => '退出成功']);
+        return $this->success(null, '退出成功');
     }
 }

@@ -91,4 +91,32 @@ abstract class BaseController
         return $v->failException(true)->check($data);
     }
 
+    /**
+     * 统一成功返回。code 为 0，data 没有内容时是 null
+     */
+    protected function success(mixed $data = null, string $msg = '操作成功')
+    {
+        return $this->result(0, $msg, $data);
+    }
+
+    /**
+     * 统一失败返回。业务错误 code 用 1，未登录用 401
+     */
+    protected function error(string $msg = '操作失败', int $code = 1, mixed $data = null, int $httpCode = 200)
+    {
+        return $this->result($code, $msg, $data, $httpCode);
+    }
+
+    /**
+     * 所有接口都返回 code、msg、data 这三个字段
+     */
+    protected function result(int $code, string $msg, mixed $data = null, int $httpCode = 200)
+    {
+        return json([
+            'code' => $code,
+            'msg'  => $msg,
+            'data' => $data,
+        ], $httpCode);
+    }
+
 }
